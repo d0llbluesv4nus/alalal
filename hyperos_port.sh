@@ -8,9 +8,8 @@ DEVICE_CODENAME="alioth"
 DPI_VALUE="440"
 
 # ❗ УКАЖИ ПРЯМЫЕ ССЫЛКИ С miuirom.org НА .zip
-STOCK_URL="https://miuirom.org/download/xxxxx.zip"
-DONOR_URL="https://miuirom.org/download/yyyyy.zip"
-
+STOCK_URL="https://bn.d.miui.com/OS1.0.3.0.TKHMIXM/miui_ALIOTHGlobal_OS1.0.3.0.TKHMIXM_57a88631b9_13.0.zip"
+DONOR_URL="https://bn.d.miui.com/OS3.0.2.0.WMCCNXM/fuxi-ota_full-OS3.0.2.0.WMCCNXM-user-16.0-88aad63558.zip"
 WORKDIR="$PWD/work"
 TOOLS="$WORKDIR/tools"
 
