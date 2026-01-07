@@ -1,0 +1,21 @@
+name: HyperOS Port
+
+on:
+  workflow_dispatch:
+
+jobs:
+  port:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run HyperOS Port
+        run: |
+          chmod +x hyperos_port.sh
+          sudo ./hyperos_port.sh
+
+      - name: Upload super.img
+        uses: actions/upload-artifact@v4
+        with:
+          name: super-img
+          path: work/out/super.img
