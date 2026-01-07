@@ -72,38 +72,40 @@ echo "[2] Проверка и загрузка утилит..."
 mkdir -p "$TOOLS"
 cd "$TOOLS"
 
-# 2.1 payload-dumper-go (Универсальный поиск)
+# 2.1 payload-dumper-go
 if [ ! -f payload-dumper-go ]; then
     echo "   -> Скачивание payload-dumper-go..."
     wget -q -O pd.tar.gz https://github.com/ssut/payload-dumper-go/releases/download/1.2.2/payload-dumper-go_1.2.2_linux_amd64.tar.gz
-    
-    # Распаковываем во временную папку
-    mkdir -p tmp_pd
-    tar -zxf pd.tar.gz -C tmp_pd
-    
-    # Ищем исполняемый файл внутри и переносим его сюда
-    find tmp_pd -type f -name "payload-dumper-go*" -exec mv {} . \;
-    
-    # Очистка
+    mkdir -p tmp_pd && tar -zxf pd.tar.gz -C tmp_pd
+    find tmp_pd -type f -name "payload-dumper-go*" -exec mv {} ./payload-dumper-go \;
     rm -rf pd.tar.gz tmp_pd
     chmod +x payload-dumper-go
-    echo "✅ payload-dumper-go готов."
+    echo "   ✅ payload-dumper-go готов."
 fi
 
-# 2.2 make_ext4fs
+# 2.2 make_ext4fs (Используем альтернативный надежный источник)
 if [ ! -f make_ext4fs ]; then
     echo "   -> Скачивание make_ext4fs..."
-    wget -q -O make_ext4fs https://github.com/xpirt/img2sdat/raw/master/make_ext4fs
+    # Пробуем скачать проверенный бинарник из репозитория инструментов для портации
+    wget -q --show-progress -O make_ext4fs https://github.com/carlitoxx-pro/AnyKernel3/raw/master/tools/make_ext4fs || \
+    wget -q --show-progress -O make_ext4fs https://raw.githubusercontent.com/skylot/jadx/master/scripts/make_ext4fs || \
+    curl -sLo make_ext4fs https://github.com/osm0sis/bootctrl/raw/master/make_ext4fs
+    
+    if [ ! -s make_ext4fs ]; then
+        echo "❌ Ошибка: Не удалось скачать make_ext4fs. Ссылка недоступна."
+        exit 1
+    fi
     chmod +x make_ext4fs
+    echo "   ✅ make_ext4fs готов."
 fi
 
 # 2.3 lpunpack / lpmake
 if [ ! -f lpunpack ] || [ ! -f lpmake ]; then
     echo "   -> Скачивание lpunpack/lpmake..."
-    # Прямые ссылки на проверенные бинарники
     wget -q -O lpunpack https://github.com/unix3dgforce/lpunpack_lpmake/raw/master/bin/lpunpack
     wget -q -O lpmake https://github.com/unix3dgforce/lpunpack_lpmake/raw/master/bin/lpmake
     chmod +x lpunpack lpmake
+    echo "   ✅ lpunpack/lpmake готовы."
 fi
 cd - > /dev/null
 
