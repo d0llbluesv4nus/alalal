@@ -66,55 +66,45 @@ sudo apt install -y \
   aria2 wget python3
 
 #################################
-# 2. ЗАГРУЗКА ИНСТРУМЕНТОВ (ТО, ЧЕГО НЕ ХВАТАЛО)
+# 2. ЗАГРУЗКА ИНСТРУМЕНТОВ
 #################################
 echo "[2] Проверка и загрузка утилит..."
+mkdir -p "$TOOLS"
 cd "$TOOLS"
 
-# 2.1 payload-dumper-go
+# 2.1 payload-dumper-go (Универсальный поиск)
 if [ ! -f payload-dumper-go ]; then
     echo "   -> Скачивание payload-dumper-go..."
     wget -q -O pd.tar.gz https://github.com/ssut/payload-dumper-go/releases/download/1.2.2/payload-dumper-go_1.2.2_linux_amd64.tar.gz
-    tar -zxf pd.tar.gz
-    mv payload-dumper-go_1.2.2_linux_amd64/payload-dumper-go .
-    rm -rf pd.tar.gz payload-dumper-go_1.2.2_linux_amd64
+    
+    # Распаковываем во временную папку
+    mkdir -p tmp_pd
+    tar -zxf pd.tar.gz -C tmp_pd
+    
+    # Ищем исполняемый файл внутри и переносим его сюда
+    find tmp_pd -type f -name "payload-dumper-go*" -exec mv {} . \;
+    
+    # Очистка
+    rm -rf pd.tar.gz tmp_pd
     chmod +x payload-dumper-go
+    echo "✅ payload-dumper-go готов."
 fi
 
-# 2.2 make_ext4fs (Редкая утилита, качаем отдельно)
+# 2.2 make_ext4fs
 if [ ! -f make_ext4fs ]; then
     echo "   -> Скачивание make_ext4fs..."
-    # Берем из надежного репозитория
     wget -q -O make_ext4fs https://github.com/xpirt/img2sdat/raw/master/make_ext4fs
     chmod +x make_ext4fs
 fi
 
-# 2.3 lpunpack / lpmake (OTATools)
+# 2.3 lpunpack / lpmake
 if [ ! -f lpunpack ] || [ ! -f lpmake ]; then
-    echo "   -> Скачивание OTATools (lpunpack/lpmake)..."
-    # Используем архив с бинарниками для Linux
-    wget -q -O otatools.zip https://github.com/tiann/android-tools/releases/download/v2024.1.1/android-tools-linux.zip
-    # Или альтернативный источник, если ссылка выше умрет.
-    # Сейчас используем надежный метод:
-    if [ ! -s otatools.zip ]; then
-        echo "⚠️  Альтернативная загрузка lpunpack..."
-        wget -q -O lpunpack https://github.com/unix3dgforce/lpunpack_lpmake/raw/master/bin/lpunpack
-        wget -q -O lpmake https://github.com/unix3dgforce/lpunpack_lpmake/raw/master/bin/lpmake
-    else
-        unzip -q -j otatools.zip "*/bin/lpunpack" "*/bin/lpmake" -d . 2>/dev/null || unzip -q -j otatools.zip "lpunpack" "lpmake"
-        rm otatools.zip
-    fi
+    echo "   -> Скачивание lpunpack/lpmake..."
+    # Прямые ссылки на проверенные бинарники
+    wget -q -O lpunpack https://github.com/unix3dgforce/lpunpack_lpmake/raw/master/bin/lpunpack
+    wget -q -O lpmake https://github.com/unix3dgforce/lpunpack_lpmake/raw/master/bin/lpmake
     chmod +x lpunpack lpmake
 fi
-
-# Проверка, что всё скачалось
-for tool in payload-dumper-go make_ext4fs lpunpack lpmake; do
-    if [ ! -f "$tool" ]; then
-        echo "❌ Ошибка: Не удалось скачать $tool. Проверьте интернет."
-        exit 1
-    fi
-done
-echo "✅ Все инструменты готовы."
 cd - > /dev/null
 
 #################################
