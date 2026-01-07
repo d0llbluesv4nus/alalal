@@ -2,347 +2,163 @@
 set -e
 
 #################################
-# НАСТРОЙКИ
+# НАСТРОЙКИ (ШАГИ 1-2 ГАЙДА)
 #################################
 DEVICE_CODENAME="alioth"
 DPI_VALUE="440"
 
-# ПРОВЕРЬ ССЫЛКИ ПЕРЕД ЗАПУСКОМ!
+# Ссылки на прошивки
 STOCK_URL="https://bn.d.miui.com/OS1.0.3.0.TKHMIXM/miui_ALIOTHGlobal_OS1.0.3.0.TKHMIXM_57a88631b9_13.0.zip"
 DONOR_URL="https://bn.d.miui.com/OS3.0.2.0.WMCCNXM/fuxi-ota_full-OS3.0.2.0.WMCCNXM-user-16.0-88aad63558.zip"
 
 WORKDIR="$PWD/work"
 TOOLS="$WORKDIR/tools"
-# Добавляем tools в PATH, чтобы скрипт видел скачанные утилиты
 export PATH="$TOOLS:$PATH"
 
-#################################
-# ФУНКЦИЯ БЕЗОПАСНОГО ВЫХОДА (TRAP)
-#################################
-# Это спасет тебя, если скрипт вылетит с ошибкой. 
-# Он сам размонтирует образы, чтобы не блокировать файлы.
-cleanup() {
-    echo ""
-    echo "⚠️  Скрипт завершен или прерван. Выполняем очистку..."
-    # Убиваем фоновый обновитель sudo
-    kill "$SUDO_PID" 2>/dev/null || true
-    
-    # Пытаемся размонтировать всё, что могли забыть
-    if [ -d "$WORKDIR" ]; then
-        sudo umount "$WORKDIR"/stock/super/* 2>/dev/null || true
-        sudo umount "$WORKDIR"/donor/super/* 2>/dev/null || true
-    fi
-    echo "✅ Очистка завершена."
-}
-trap cleanup EXIT INT TERM
-
-#################################
-# SUDO KEEP-ALIVE
-#################################
-# Запрашиваем пароль один раз в начале
+# Таймер sudo
 sudo -v
-# Обновляем таймер sudo в фоне, пока скрипт работает
 ( while true; do sudo -v; sleep 60; done; ) &
 SUDO_PID=$!
 
-#################################
-# 0. ОЧИСТКА МЕСТА
-#################################
-echo "[0] Подготовка рабочего пространства..."
-# sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc || true
-sudo apt clean
-# Создаем папки заранее
-mkdir -p "$WORKDIR" "$TOOLS"
+cleanup() {
+    kill "$SUDO_PID" 2>/dev/null || true
+    sudo umount "$WORKDIR"/stock/super/* 2>/dev/null || true
+    sudo umount "$WORKDIR"/donor/super/* 2>/dev/null || true
+}
+trap cleanup EXIT
 
 #################################
-# 1. СИСТЕМНЫЕ ЗАВИСИМОСТИ
+# 1. ЗАВИСИМОСТИ И ИНСТРУМЕНТЫ
 #################################
-echo "[1] Установка системных пакетов..."
-sudo apt update
-sudo apt install -y \
-  unzip lz4 tar \
-  android-sdk-libsparse-utils \
-  xmlstarlet e2fsprogs \
-  aria2 wget python3
+echo "[1] Установка инструментов..."
+sudo apt update && sudo apt install -y unzip lz4 tar aria2 wget python3 xmlstarlet e2fsprogs android-sdk-libsparse-utils lib32z1
 
-#################################
-# 2. ЗАГРУЗКА ИНСТРУМЕНТОВ
-#################################
-echo "[2] Проверка и загрузка утилит..."
 mkdir -p "$TOOLS"
 cd "$TOOLS"
-
-# 2.1 payload-dumper-go
-if [ ! -f payload-dumper-go ]; then
-    echo "   -> Скачивание payload-dumper-go..."
-    wget -q -O pd.tar.gz https://github.com/ssut/payload-dumper-go/releases/download/1.2.2/payload-dumper-go_1.2.2_linux_amd64.tar.gz
-    mkdir -p tmp_pd && tar -zxf pd.tar.gz -C tmp_pd
-    find tmp_pd -type f -name "payload-dumper-go*" -exec mv {} ./payload-dumper-go \;
-    rm -rf pd.tar.gz tmp_pd
-    chmod +x payload-dumper-go
-    echo "   ✅ payload-dumper-go готов."
-fi
-
-# 2.2 make_ext4fs (Множественные источники)
-if [ ! -f make_ext4fs ]; then
-    echo "   -> Скачивание make_ext4fs..."
-    # Пробуем несколько надежных источников по очереди
-    URLS=(
-        "https://github.com/carlitoxx-pro/AnyKernel3/raw/master/tools/make_ext4fs"
-        "https://raw.githubusercontent.com/skylot/jadx/master/scripts/make_ext4fs"
-        "https://github.com/osm0sis/bootctrl/raw/master/make_ext4fs"
-    )
-    
-    for url in "${URLS[@]}"; do
-        echo "      Пробую: $url"
-        wget -q --show-progress -O make_ext4fs "$url" && break
-    done
-
-    if [ ! -s make_ext4fs ]; then
-        echo "❌ Ошибка: Не удалось скачать make_ext4fs ни по одной ссылке."
-        exit 1
-    fi
-    chmod +x make_ext4fs
-    echo "   ✅ make_ext4fs готов."
-fi
-
-# 2.3 lpunpack / lpmake
-if [ ! -f lpunpack ] || [ ! -f lpmake ]; then
-    echo "   -> Скачивание lpunpack/lpmake..."
-    wget -q -O lpunpack https://github.com/unix3dgforce/lpunpack_lpmake/raw/master/bin/lpunpack
-    wget -q -O lpmake https://github.com/unix3dgforce/lpunpack_lpmake/raw/master/bin/lpmake
-    chmod +x lpunpack lpmake
-    echo "   ✅ lpunpack/lpmake готовы."
-fi
+# payload-dumper-go
+wget -q -O pd.tar.gz https://github.com/ssut/payload-dumper-go/releases/download/1.2.2/payload-dumper-go_1.2.2_linux_amd64.tar.gz
+tar -zxf pd.tar.gz && find . -name "payload-dumper-go*" -exec mv {} ./payload-dumper-go \;
+# lpunpack/lpmake
+wget -q -O lpunpack https://github.com/unix3dgforce/lpunpack_lpmake/raw/master/bin/lpunpack
+wget -q -O lpmake https://github.com/unix3dgforce/lpunpack_lpmake/raw/master/bin/lpmake
+chmod +x payload-dumper-go lpunpack lpmake
 cd - > /dev/null
 
 #################################
-# 3. СКАЧИВАНИЕ ПРОШИВОК
+# 2. РАСПАКОВКА (ШАГ 1 ГАЙДА)
 #################################
 mkdir -p "$WORKDIR"/{stock,donor}
 
-download_fw () {
-  NAME=$1
-  URL=$2
-  ZIP="$WORKDIR/$NAME.zip"
-
-  echo "[3] Обработка $NAME..."
-  
-  if [ -f "$ZIP" ]; then
-      echo "   ZIP файл уже существует, пропускаем скачивание."
-  else
-      echo "   Скачивание $NAME..."
-      aria2c --file-allocation=trunc --allow-overwrite=true -x 4 -s 4 \
-        -o "$(basename "$ZIP")" -d "$(dirname "$ZIP")" "$URL"
-  fi
-
-  if ! unzip -t "$ZIP" >/dev/null 2>&1; then
-    echo "❌ $NAME: Битая ссылка или файл."
-    exit 1
-  fi
-
-  # Распаковываем только если папка пуста
-  if [ -z "$(ls -A "$WORKDIR/$NAME" 2>/dev/null)" ]; then
-      echo "   Распаковка ZIP..."
-      unzip -q "$ZIP" -d "$WORKDIR/$NAME"
-  fi
+extract_fw() {
+    NAME=$1; URL=$2; DIR="$WORKDIR/$NAME"
+    echo "[*] Обработка $NAME..."
+    aria2c -x 4 -s 4 -d "$WORKDIR" -o "$NAME.zip" "$URL"
+    unzip -q "$WORKDIR/$NAME.zip" -d "$DIR"
+    "$TOOLS/payload-dumper-go" -o "$DIR/images" "$DIR/payload.bin"
+    
+    simg2img "$DIR/images/super.img" "$DIR/super.raw.img" || cp "$DIR/images/super.img" "$DIR/super.raw.img"
+    mkdir -p "$DIR/super_extracted"
+    lpunpack "$DIR/super.raw.img" "$DIR/super_extracted"
+    
+    for img in "$DIR/super_extracted/"*.img; do
+        mnt="${img%.img}"
+        mkdir -p "$mnt"
+        sudo mount -o loop "$img" "$mnt"
+    done
 }
 
-download_fw stock "$STOCK_URL"
-download_fw donor "$DONOR_URL"
+extract_fw stock "$STOCK_URL"
+extract_fw donor "$DONOR_URL"
 
 #################################
-# 4. ИЗВЛЕЧЕНИЕ SUPER.IMG
+# 3. ПОРТИРОВАНИЕ (ШАГИ 2-13)
 #################################
-extract_super () {
-  NAME=$1
-  DIR="$WORKDIR/$NAME"
-  mkdir -p "$DIR/images"
+echo "[*] Применение правок по гайду..."
 
-  if [ -f "$DIR/images/super.img" ]; then
-      return
-  fi
+# Шаг 2: device_features
+sudo cp -r "$WORKDIR/stock/super_extracted/product/etc/device_features/"* \
+        "$WORKDIR/donor/super_extracted/product/etc/device_features/"
 
-  if [ -f "$DIR/payload.bin" ]; then
-    echo "[4] Извлечение payload.bin для $NAME..."
-    payload-dumper-go -o "$DIR/images" "$DIR/payload.bin" >/dev/null
-  fi
-  
-  # Проверка результата
-  if [ ! -f "$DIR/images/super.img" ]; then
-      # Иногда payload dumper не переименовывает super, ищем самый большой файл
-      BIGGEST=$(find "$DIR/images" -type f -printf "%s\t%p\n" | sort -n | tail -1 | cut -f2)
-      if [[ "$BIGGEST" == *"super"* ]]; then
-          echo "⚠️  super.img не найден явно, но найден $(basename "$BIGGEST"). Переименовываем..."
-          mv "$BIGGEST" "$DIR/images/super.img"
-      else
-          echo "❌ Ошибка: super.img не найден в $NAME"
-          exit 1
-      fi
-  fi
-}
+# Шаг 3: AOD Fullscreen
+TARGET_XML=$(ls "$WORKDIR/donor/super_extracted/product/etc/device_features/"*.xml | head -n 1)
+sudo xmlstarlet ed -L -s "/resources" -t elem -n "bool" -v "true" \
+    -i "/resources/bool[last()]" -t attr -n "name" -v "support_aod_fullscreen" "$TARGET_XML"
 
-extract_super stock
-extract_super donor
+# Шаг 4: displayconfig
+sudo cp -r "$WORKDIR/stock/super_extracted/product/etc/displayconfig/"* \
+        "$WORKDIR/donor/super_extracted/product/etc/displayconfig/"
 
-#################################
-# 5. РАСПАКОВКА SUPER.IMG
-#################################
-for TYPE in stock donor; do
-  echo "[5] Распаковка super раздела ($TYPE)..."
-  if [ ! -d "$WORKDIR/$TYPE/super" ]; then
-      # Конвертируем sparse -> raw
-      simg2img "$WORKDIR/$TYPE/images/super.img" "$WORKDIR/$TYPE/super.raw.img" || cp "$WORKDIR/$TYPE/images/super.img" "$WORKDIR/$TYPE/super.raw.img"
-      
-      mkdir -p "$WORKDIR/$TYPE/super"
-      lpunpack "$WORKDIR/$TYPE/super.raw.img" "$WORKDIR/$TYPE/super"
-      
-      # Удаляем raw файл (он огромный)
-      rm "$WORKDIR/$TYPE/super.raw.img"
-  fi
-done
+# Шаги 5, 6, 7: product build.prop
+PROP_P="$WORKDIR/donor/super_extracted/product/etc/build.prop"
+sudo sed -i "/persist.miui.density_v2/d;/ro.sf.lcd_density/d;/ro.product.product.name/d" "$PROP_P"
+echo "persist.miui.density_v2=$DPI_VALUE" | sudo tee -a "$PROP_P"
+echo "ro.sf.lcd_density=$DPI_VALUE" | sudo tee -a "$PROP_P"
+echo "ro.product.product.name=$DEVICE_CODENAME" | sudo tee -a "$PROP_P"
+# Добавление строк из шага 7 (замените текст ниже на содержимое вашего product_build_prop.txt)
+echo "# Дополнительные пропы из шага 7" | sudo tee -a "$PROP_P"
 
-#################################
-# 6. МОНТИРОВАНИЕ IMG
-#################################
-mount_img () {
-  IMG=$1
-  DIR=${IMG%.img}
-  
-  if mountpoint -q "$DIR"; then return; fi
-  
-  mkdir -p "$DIR"
-  # Монтируем. Важно: Stock монтируем RO (чтение), Donor RW (запись не нужна, но скрипт может требовать)
-  # Для безопасности исходников используем RO, если скрипт не пишет ПРЯМО В НИХ.
-  # Твой скрипт копирует ИЗ stock В donor.
-  sudo mount -o loop "$IMG" "$DIR"
-}
+# Шаг 8: Biometrics
+sudo cp -r "$WORKDIR/stock/super_extracted/product/app/"*Biometrics* \
+        "$WORKDIR/donor/super_extracted/product/app/"
 
-echo "[6] Монтирование разделов..."
-for i in "$WORKDIR/stock/super/"*.img; do mount_img "$i"; done
-for i in "$WORKDIR/donor/super/"*.img; do mount_img "$i"; done
+# Шаг 9: Pangu перемещение
+sudo mv "$WORKDIR/donor/super_extracted/product/pangu/system/"* "$WORKDIR/donor/super_extracted/product/app/" || true
+sudo mv "$WORKDIR/donor/super_extracted/product/pangu/framework/"* "$WORKDIR/donor/super_extracted/product/framework/" || true
 
-#################################
-# 7 - 14. МОДИФИКАЦИЯ (ТВОЯ ЛОГИКА)
-#################################
-echo "[7-14] Применение патчей..."
+# Шаг 10: VNDK Apex
+sudo cp "$WORKDIR/stock/super_extracted/system_ext/apex/"com.android.vndk.v30*.apex \
+        "$WORKDIR/donor/super_extracted/system_ext/apex/" || true
 
-# 7. device_features
-sudo cp -r "$WORKDIR/stock/super/product/etc/device_features/"* \
-         "$WORKDIR/donor/super/product/etc/device_features/"
+# Шаг 11: system/system/build.prop (добавление строк)
+PROP_S="$WORKDIR/donor/super_extracted/system/system/build.prop"
+echo "# Дополнительные пропы из шага 11" | sudo tee -a "$PROP_S"
 
-# XML Fix
-TARGET_XML=$(ls "$WORKDIR/donor/super/product/etc/device_features/"*.xml 2>/dev/null | head -n 1)
-if [ -n "$TARGET_XML" ]; then
-    sudo xmlstarlet ed -L \
-    -s "/resources" -t elem -n "bool" -v "true" \
-    -i "/resources/bool[last()]" -t attr -n "name" -v "support_aod_fullscreen" \
-    "$TARGET_XML"
-fi
+# Шаг 12: mi_ext build.prop
+PROP_M="$WORKDIR/donor/super_extracted/mi_ext/etc/build.prop"
+sudo sed -i "/ro.product.mod_device/d" "$PROP_M"
+echo "ro.product.mod_device=$DEVICE_CODENAME" | sudo tee -a "$PROP_M"
 
-# 8. displayconfig
-sudo cp -r "$WORKDIR/stock/super/product/etc/displayconfig/"* \
-         "$WORKDIR/donor/super/product/etc/displayconfig/"
-
-# 9. build.prop
-PROP="$WORKDIR/donor/super/product/etc/build.prop"
-# Используем временный файл, чтобы sed не ругался на права
-sudo cp "$PROP" "$PROP.tmp"
-sudo chmod 777 "$PROP.tmp"
-sed -i "/persist.miui.density_v2/d;/ro.sf.lcd_density/d;/ro.product.product.name/d" "$PROP.tmp"
-echo "persist.miui.density_v2=$DPI_VALUE" >> "$PROP.tmp"
-echo "ro.sf.lcd_density=$DPI_VALUE" >> "$PROP.tmp"
-echo "ro.product.product.name=$DEVICE_CODENAME" >> "$PROP.tmp"
-sudo mv "$PROP.tmp" "$PROP"
-sudo chown root:root "$PROP"
-
-# 10. Biometrics
-sudo cp -r "$WORKDIR/stock/super/product/app/"*Biometrics* \
-         "$WORKDIR/donor/super/product/app/" 2>/dev/null || echo "   Biometrics пропущен (не найден)"
-
-# 11. Pangu
-sudo mv "$WORKDIR/donor/super/product/pangu/system/"* \
-        "$WORKDIR/donor/super/product/app/" 2>/dev/null || true
-sudo mv "$WORKDIR/donor/super/product/pangu/framework/"* \
-        "$WORKDIR/donor/super/product/framework/" 2>/dev/null || true
-
-# 12. VNDK
-sudo cp "$WORKDIR/stock/super/system_ext/apex/"com.android.vndk.v30*.apex \
-        "$WORKDIR/donor/super/system_ext/apex/" 2>/dev/null || true
-
-# 13. mi_ext prop
-MI_EXT_PROP="$WORKDIR/donor/super/mi_ext/etc/build.prop"
-if [ -f "$MI_EXT_PROP" ]; then
-    sudo sed -i "/ro.product.mod_device/d" "$MI_EXT_PROP"
-    echo "ro.product.mod_device=$DEVICE_CODENAME" | sudo tee -a "$MI_EXT_PROP" >/dev/null
-fi
-
-# 14. Overlays
-for o in AospFrameworkResOverlay.apk DevicesAndroidOverlay.apk DevicesOverlay.apk MiuiFrameworkResOverlay.apk; do
-  if [ -f "$WORKDIR/stock/super/product/overlay/$o" ]; then
-      sudo cp "$WORKDIR/stock/super/product/overlay/$o" "$WORKDIR/donor/super/product/overlay/"
-  fi
-done
-
-#################################
-# 15. РАЗМОНТИРОВАНИЕ
-#################################
-echo "[15] Размонтирование..."
-sudo umount "$WORKDIR"/stock/super/* 2>/dev/null || true
-sudo umount "$WORKDIR"/donor/super/* 2>/dev/null || true
-
-#################################
-# 16. СБОРКА ОБРАЗОВ
-#################################
-echo "[16] Пересборка разделов в IMG..."
-cd "$WORKDIR"
-mkdir -p out
-cd out
-
-# Увеличил размер до 6G (6144M), так как 4G часто мало для HyperOS.
-# make_ext4fs создает sparse image, поэтому файл на диске будет маленьким,
-# но система будет думать, что раздел на 6ГБ.
-IMG_SIZE="6144M"
-
-# Функция для сборки, чтобы не писать одно и то же
-build_img() {
-    NAME=$1
-    SRC_DIR=$2
-    if [ -d "$SRC_DIR" ]; then
-        echo "   Сборка $NAME.img..."
-        # -L = метка, -l = размер, -a = точка монтирования (важно для Android)
-        sudo "$TOOLS/make_ext4fs" -T -1 -S "$SRC_DIR/file_contexts" -L "$NAME" -l "$IMG_SIZE" -a "$NAME" "$NAME.img" "$SRC_DIR" 2>/dev/null || \
-        sudo "$TOOLS/make_ext4fs" -T -1 -L "$NAME" -l "$IMG_SIZE" -a "$NAME" "$NAME.img" "$SRC_DIR"
-        
-        # Меняем права на файл, чтобы lpmake мог его читать
-        sudo chown $USER:$USER "$NAME.img"
-    fi
-}
-
-# Stock нам нужен только для vendor/odm/dlkm, если мы берем их из стока?
-# В твоем скрипте vendor создается из stock, а system из donor.
-build_img vendor        "$WORKDIR/stock/super/vendor"
-build_img odm           "$WORKDIR/stock/super/odm"
-build_img system_dlkm   "$WORKDIR/stock/super/system_dlkm"
-build_img vendor_dlkm   "$WORKDIR/stock/super/vendor_dlkm"
-
-build_img system        "$WORKDIR/donor/super/system"
-build_img product       "$WORKDIR/donor/super/product"
-build_img system_ext    "$WORKDIR/donor/super/system_ext"
-build_img mi_ext        "$WORKDIR/donor/super/mi_ext"
-
-echo "[*] Упаковка в super.img..."
-# Динамически формируем команду lpmake, добавляя только существующие файлы
-LPMAKE_ARGS="--metadata-size 65536 --super-name super --device super:9663676416 --group main:9663676416"
-
-for part in system product system_ext mi_ext vendor odm system_dlkm vendor_dlkm; do
-    if [ -f "$part.img" ]; then
-        SIZE=$(stat -c%s "$part.img")
-        LPMAKE_ARGS="$LPMAKE_ARGS --partition $part:readonly:$SIZE:main --image $part=$part.img"
+# Шаг 13: Overlays
+for apk in AospFrameworkResOverlay.apk DevicesAndroidOverlay.apk DevicesOverlay.apk MiuiFrameworkResOverlay.apk; do
+    if [ -f "$WORKDIR/stock/super_extracted/product/overlay/$apk" ]; then
+        sudo cp "$WORKDIR/stock/super_extracted/product/overlay/$apk" "$WORKDIR/donor/super_extracted/product/overlay/"
     fi
 done
 
-lpmake $LPMAKE_ARGS --output super.img
+#################################
+# 4. СБОРКА (ШАГИ 14-15 ГАЙДА)
+#################################
+echo "[*] Сборка разделов..."
+mkdir -p "$WORKDIR/out"
 
-echo ""
-echo "🎉 ГОТОВО! Файл находится здесь: $PWD/super.img"
+build_image() {
+    NAME=$1; SRC=$2; SIZE=5368709120 # 5GB (измените при необходимости)
+    echo "   Упаковка $NAME.img"
+    truncate -s $SIZE "$WORKDIR/out/$NAME.img"
+    mkfs.ext4 -L "$NAME" -O ^has_journal "$WORKDIR/out/$NAME.img" >/dev/null
+    sudo e2fsdroid -e -a "/$NAME" -f "$SRC" "$WORKDIR/out/$NAME.img"
+    sudo chown $USER:$USER "$WORKDIR/out/$NAME.img"
+}
+
+# Шаг 14: Какие файлы откуда брать
+build_image vendor "$WORKDIR/stock/super_extracted/vendor"
+build_image odm "$WORKDIR/stock/super_extracted/odm"
+build_image system_dlkm "$WORKDIR/stock/super_extracted/system_dlkm"
+build_image vendor_dlkm "$WORKDIR/stock/super_extracted/vendor_dlkm"
+
+build_image system "$WORKDIR/donor/super_extracted/system"
+build_image product "$WORKDIR/donor/super_extracted/product"
+build_image system_ext "$WORKDIR/donor/super_extracted/system_ext"
+build_image mi_ext "$WORKDIR/donor/super_extracted/mi_ext"
+
+# Шаг 15: Сборка super.img
+echo "[*] Финальная сборка super.img..."
+LP_ARGS="--metadata-size 65536 --super-name super --device super:9663676416 --group main:9663676416"
+for img in "$WORKDIR/out/"*.img; do
+    PART=$(basename "$img" .img)
+    LP_ARGS="$LP_ARGS --partition $PART:readonly:$(stat -c%s "$img"):main --image $PART=$img"
+done
+
+lpmake $LP_ARGS --output "$WORKDIR/super_final.img"
+
+echo "✅ Процесс завершен! Файл: $WORKDIR/super_final.img"
