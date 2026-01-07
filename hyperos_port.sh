@@ -26,7 +26,7 @@ df -h
 ########################
 sudo apt update
 sudo apt install -y \
-  wget unzip lz4 simg2img img2simg \
+  wget unzip lz4 \
   android-sdk-libsparse-utils \
   xmlstarlet e2fsprogs
 
