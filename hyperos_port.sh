@@ -7,8 +7,8 @@ set -e
 DEVICE_CODENAME="alioth"
 DPI_VALUE="440"
 
-STOCK_URL="https://example.com/stock_fastboot.zip"
-DONOR_URL="https://example.com/hyperos_donor.zip"
+STOCK_URL="https://cdnorg.d.miui.com/OS1.0.3.0.TKHMIXM/alioth_global_images_OS1.0.3.0.TKHMIXM_20240604.0000.00_13.0_global_af9c432b92.tgz"
+DONOR_URL="https://cdnorg.d.miui.com/OS3.0.2.0.WMCCNXM/fuxi_images_OS3.0.2.0.WMCCNXM_20251127.0000.00_16.0_cn_f4799ae6de.tgz"
 
 WORKDIR="$PWD/work"
 TOOLS="$WORKDIR/tools"
