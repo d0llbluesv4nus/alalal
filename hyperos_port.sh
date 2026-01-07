@@ -83,16 +83,15 @@ if [ ! -f payload-dumper-go ]; then
     echo "   ✅ payload-dumper-go готов."
 fi
 
-# 2.2 make_ext4fs (Используем альтернативный надежный источник)
+# 2.2 make_ext4fs (Используем надежное зеркало)
 if [ ! -f make_ext4fs ]; then
     echo "   -> Скачивание make_ext4fs..."
-    # Пробуем скачать проверенный бинарник из репозитория инструментов для портации
+    # Пытаемся скачать из надежного источника (утилиты для сборки Android)
     wget -q --show-progress -O make_ext4fs https://github.com/carlitoxx-pro/AnyKernel3/raw/master/tools/make_ext4fs || \
-    wget -q --show-progress -O make_ext4fs https://raw.githubusercontent.com/skylot/jadx/master/scripts/make_ext4fs || \
-    curl -sLo make_ext4fs https://github.com/osm0sis/bootctrl/raw/master/make_ext4fs
+    wget -q --show-progress -O make_ext4fs https://raw.githubusercontent.com/skylot/jadx/master/scripts/make_ext4fs
     
     if [ ! -s make_ext4fs ]; then
-        echo "❌ Ошибка: Не удалось скачать make_ext4fs. Ссылка недоступна."
+        echo "❌ Ошибка: Не удалось скачать make_ext4fs. Ссылки недоступны."
         exit 1
     fi
     chmod +x make_ext4fs
@@ -102,6 +101,7 @@ fi
 # 2.3 lpunpack / lpmake
 if [ ! -f lpunpack ] || [ ! -f lpmake ]; then
     echo "   -> Скачивание lpunpack/lpmake..."
+    # Прямые ссылки на стабильные бинарники
     wget -q -O lpunpack https://github.com/unix3dgforce/lpunpack_lpmake/raw/master/bin/lpunpack
     wget -q -O lpmake https://github.com/unix3dgforce/lpunpack_lpmake/raw/master/bin/lpmake
     chmod +x lpunpack lpmake
