@@ -83,15 +83,23 @@ if [ ! -f payload-dumper-go ]; then
     echo "   ✅ payload-dumper-go готов."
 fi
 
-# 2.2 make_ext4fs (Используем надежное зеркало)
+# 2.2 make_ext4fs (Множественные источники)
 if [ ! -f make_ext4fs ]; then
     echo "   -> Скачивание make_ext4fs..."
-    # Пытаемся скачать из надежного источника (утилиты для сборки Android)
-    wget -q --show-progress -O make_ext4fs https://github.com/carlitoxx-pro/AnyKernel3/raw/master/tools/make_ext4fs || \
-    wget -q --show-progress -O make_ext4fs https://raw.githubusercontent.com/skylot/jadx/master/scripts/make_ext4fs
+    # Пробуем несколько надежных источников по очереди
+    URLS=(
+        "https://github.com/carlitoxx-pro/AnyKernel3/raw/master/tools/make_ext4fs"
+        "https://raw.githubusercontent.com/skylot/jadx/master/scripts/make_ext4fs"
+        "https://github.com/osm0sis/bootctrl/raw/master/make_ext4fs"
+    )
     
+    for url in "${URLS[@]}"; do
+        echo "      Пробую: $url"
+        wget -q --show-progress -O make_ext4fs "$url" && break
+    done
+
     if [ ! -s make_ext4fs ]; then
-        echo "❌ Ошибка: Не удалось скачать make_ext4fs. Ссылки недоступны."
+        echo "❌ Ошибка: Не удалось скачать make_ext4fs ни по одной ссылке."
         exit 1
     fi
     chmod +x make_ext4fs
@@ -101,7 +109,6 @@ fi
 # 2.3 lpunpack / lpmake
 if [ ! -f lpunpack ] || [ ! -f lpmake ]; then
     echo "   -> Скачивание lpunpack/lpmake..."
-    # Прямые ссылки на стабильные бинарники
     wget -q -O lpunpack https://github.com/unix3dgforce/lpunpack_lpmake/raw/master/bin/lpunpack
     wget -q -O lpmake https://github.com/unix3dgforce/lpunpack_lpmake/raw/master/bin/lpmake
     chmod +x lpunpack lpmake
