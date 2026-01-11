@@ -1,21 +1,151 @@
-name: HyperOS Port
+name: Firmware Porting for Poco F3 (Fastboot Version with super.img)
 
 on:
   workflow_dispatch:
+    inputs:
+      stock_firmware_url:
+        description: 'URL to stock firmware TGZ file'
+        required: true
+        default: ''
+      donor_firmware_url:
+        description: 'URL to donor firmware TGZ file'
+        required: true
+        default: ''
 
 jobs:
-  port:
+  port_firmware:
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Check out repository
+        uses: actions/checkout@v2
 
-      - name: Run HyperOS Port
+      - name: Set up dependencies
         run: |
-          chmod +x hyperos_port.sh
-          sudo ./hyperos_port.sh
+          # Устанавливаем необходимые зависимости
+          sudo apt update
+          sudo apt install -y android-tools-fsutils unzip wget fastboot tar git
 
-      - name: Upload super.img
-        uses: actions/upload-artifact@v4
+          # Устанавливаем simg2img (для распаковки super.img)
+          git clone https://github.com/LineageOS/android_system_core.git
+          cd android_system_core
+          make -j4 simg2img
+          sudo cp out/host/linux-x86/bin/simg2img /usr/local/bin/
+          cd ..
+          rm -rf android_system_core
+
+      - name: Download stock firmware
+        run: |
+          wget ${{ github.event.inputs.stock_firmware_url }} -O stock_firmware.tgz
+          mkdir stock_firmware
+          tar -xvzf stock_firmware.tgz -C stock_firmware
+
+      - name: Download donor firmware
+        run: |
+          wget ${{ github.event.inputs.donor_firmware_url }} -O donor_firmware.tgz
+          mkdir donor_firmware
+          tar -xvzf donor_firmware.tgz -C donor_firmware
+
+      - name: Extract super.img from stock firmware
+        run: |
+          mkdir -p ~/stock_firmware/extracted
+          # Распаковываем super.img из стоковой прошивки
+          cp stock_firmware/super.img ~/stock_firmware/
+          simg2img ~/stock_firmware/super.img ~/stock_firmware/extracted/stock_super.img
+          # Далее распаковываем образы, которые находятся внутри super.img
+          mkdir ~/stock_firmware/extracted/system
+          mkdir ~/stock_firmware/extracted/vendor
+          mkdir ~/stock_firmware/extracted/product
+          mkdir ~/stock_firmware/extracted/system_ext
+          sudo mount -o loop ~/stock_firmware/extracted/stock_super.img ~/stock_firmware/extracted/system
+          sudo mount -o loop ~/stock_firmware/extracted/stock_super.img ~/stock_firmware/extracted/vendor
+          sudo mount -o loop ~/stock_firmware/extracted/stock_super.img ~/stock_firmware/extracted/product
+          sudo mount -o loop ~/stock_firmware/extracted/stock_super.img ~/stock_firmware/extracted/system_ext
+
+      - name: Extract super.img from donor firmware
+        run: |
+          mkdir -p ~/donor_firmware/extracted
+          # Распаковываем super.img из прошивки донора
+          cp donor_firmware/super.img ~/donor_firmware/
+          simg2img ~/donor_firmware/super.img ~/donor_firmware/extracted/donor_super.img
+          # Далее распаковываем образы из super.img
+          mkdir ~/donor_firmware/extracted/system
+          mkdir ~/donor_firmware/extracted/vendor
+          mkdir ~/donor_firmware/extracted/product
+          mkdir ~/donor_firmware/extracted/system_ext
+          sudo mount -o loop ~/donor_firmware/extracted/donor_super.img ~/donor_firmware/extracted/system
+          sudo mount -o loop ~/donor_firmware/extracted/donor_super.img ~/donor_firmware/extracted/vendor
+          sudo mount -o loop ~/donor_firmware/extracted/donor_super.img ~/donor_firmware/extracted/product
+          sudo mount -o loop ~/donor_firmware/extracted/donor_super.img ~/donor_firmware/extracted/system_ext
+
+      - name: Copy device features from stock to donor
+        run: |
+          cp -r ~/stock_firmware/extracted/system/product/etc/device_features/* ~/donor_firmware/extracted/system/product/etc/device_features/
+
+      - name: Edit device feature file to enable AOD fullscreen
+        run: |
+          echo "<bool name=\"support_aod_fullscreen\">true</bool>" >> ~/donor_firmware/extracted/system/product/etc/device_features/<device_feature_file>
+
+      - name: Copy display config files from stock to donor
+        run: |
+          cp -r ~/stock_firmware/extracted/system/product/etc/displayconfig/* ~/donor_firmware/extracted/system/product/etc/displayconfig/
+
+      - name: Modify build.prop for DPI and product name
+        run: |
+          # Обновляем DPI и кодовое название устройства
+          sed -i 's/persist.miui.density_v2=.*/persist.miui.density_v2=<DPI_VALUE>/' ~/donor_firmware/extracted/system/product/etc/build.prop
+          sed -i 's/ro.sf.lcd_density=.*/ro.sf.lcd_density=<DPI_VALUE>/' ~/donor_firmware/extracted/system/product/etc/build.prop
+          sed -i 's/ro.product.product.name=.*/ro.product.product.name=ingres/' ~/donor_firmware/extracted/system/product/etc/build.prop
+
+      - name: Add custom build.prop settings
+        run: |
+          cat <<EOL >> ~/donor_firmware/extracted/system/product/etc/build.prop
+<custom_lines_from_file>
+EOL
+
+      - name: Copy Biometrics from stock to donor
+        run: |
+          cp -r ~/stock_firmware/extracted/system/product/app/* ~/donor_firmware/extracted/system/product/app/
+
+      - name: Move system files from stock to donor
+        run: |
+          mv ~/stock_firmware/extracted/system/product/pangu/system/* ~/donor_firmware/extracted/system/product/app/
+          mv ~/stock_firmware/extracted/system/product/framework/* ~/donor_firmware/extracted/system/product/framework/
+
+      - name: Copy apex files from stock to donor
+        run: |
+          cp ~/stock_firmware/extracted/system_ext/apex/com.android.vndk.v30.apex ~/donor_firmware/extracted/system_ext/apex/
+
+      - name: Modify donor system build.prop
+        run: |
+          cat <<EOL >> ~/donor_firmware/extracted/system/system/build.prop
+<custom_lines_from_file>
+EOL
+
+      - name: Edit mi_ext build.prop
+        run: |
+          sed -i 's/ro.product.mod_device=.*/ro.product.mod_device=ingres/' ~/donor_firmware/extracted/mi_ext/etc/build.prop
+
+      - name: Copy overlays from stock to donor
+        run: |
+          cp ~/stock_firmware/extracted/system/product/overlay/AospFrameworkResOverlay.apk ~/donor_firmware/extracted/system/product/overlay/
+          cp ~/stock_firmware/extracted/system/product/overlay/DevicesAndroidOverlay.apk ~/donor_firmware/extracted/system/product/overlay/
+          cp ~/stock_firmware/extracted/system/product/overlay/DevicesOverlay.apk ~/donor_firmware/extracted/system/product/overlay/
+          cp ~/stock_firmware/extracted/system/product/overlay/MiuiFrameworkResOverlay.apk ~/donor_firmware/extracted/system/product/overlay/
+
+      - name: Pack the images back into fastboot .img files
+        run: |
+          # Упаковываем все .img файлы обратно в fastboot образы
+          fastboot flash system ~/donor_firmware/extracted/system.img
+          fastboot flash vendor ~/donor_firmware/extracted/vendor.img
+          fastboot flash boot ~/donor_firmware/extracted/boot.img
+          fastboot flash recovery ~/donor_firmware/extracted/recovery.img
+          fastboot flash product ~/donor_firmware/extracted/product.img
+          
+      - name: Upload final images as artifacts
+        uses: actions/upload-artifact@v2
         with:
-          name: super-img
-          path: work/out/super.img
+          name: ported_firmware
+          path: |
+            ~/donor_firmware/extracted/*.img
+            
